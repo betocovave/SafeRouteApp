@@ -1,0 +1,37 @@
+ID,Requerimiento,Implementacion,Validacion
+RF-01,Registrar cuenta,auth/register y pantalla de registro,Prueba API
+RF-02,Iniciar sesion,auth/login y sesiones JWT,Prueba API y dispositivo pendiente
+RF-03,Recuperar contraseña,auth/recover con codigo rotatorio,Prueba API
+RF-04,Gestionar perfil,users/me y Perfil,Prueba contrato; dispositivo pendiente
+RF-05,Mapa y ubicacion,Azure Web SDK y GPS foreground,Bundle; Azure y dispositivo pendientes
+RF-06,Buscar destino,Azure geocode y seleccion de mapa,Credencial Azure pendiente
+RF-07,Rutas alternativas,Azure Directions y corredor OSM auto/pie,Contrato y deduplicacion; Azure pendiente
+RF-08,Indice estimado,risk_algorithm versionado,Pruebas de riesgo
+RF-09,Comparar seguridad,Panel de rutas con factores,Bundle; dispositivo pendiente
+RF-10,Recomendar menor exposicion,Motor de recomendaciones,Prueba de rechazo critico
+RF-11,Registrar incidente,incidents y cola UUID,Prueba idempotencia
+RF-12,Evidencia fotografica,Foto opcional Blob con sanitizacion,Prueba EXIF y cola; Blob pendiente
+RF-13,Solicitar corroboracion,Alertas por proximidad y precision,Prueba API; push pendiente
+RF-14,Corroborar vigencia,Continua/Finalizo/No puedo confirmar,Prueba independiente y cercana
+RF-15,Actualizar estados,Votos por version y caducidad,Pruebas API y expiracion
+RF-16,Mostrar alertas,WebSocket y actividad con push,Codigo y bundle; dispositivo pendiente
+RF-17,Eventos de ruta,Categorias y proximidad a recorrido,Codigo; flujo externo pendiente
+RF-18,Actualizar incidentes,Versionado y reevaluacion de recorrido,Pruebas de estados; dispositivo pendiente
+RF-19,Mapa de calor,Agregacion historica Pandas y capas,Codigo; dispositivo pendiente
+RF-20,Iluminacion,Tres categorias y ponderacion nocturna,Prueba nocturna
+RF-21,Vialidad,Categorias de condiciones de via,Seed y contratos
+RF-22,Factores integrados,Severidad/proximidad/edad/confianza/grupo,Pruebas de riesgo
+RF-23,Cambios en recorrido,Reevaluacion al recibir cambios,Bundle; escenario en dispositivo pendiente
+RF-24,Cambio de ruta,Alternativas y seleccion explicita,Contrato de rutas; dispositivo pendiente
+RF-25,Detencion preventiva,Advertencia sin alternativa adecuada,Prueba de riesgo critico
+RF-26,Administracion,Rol servidor y pantalla administrativa,Prueba permisos y categorias
+RNF-01,Proteger informacion,Argon2 JWT refresh y autorizacion,Pruebas revocacion; HTTPS produccion pendiente
+RNF-02,Proteger ubicacion,Permiso foreground y borrado por retencion,Codigo; dispositivo pendiente
+RNF-03,Disponibilidad,Timeouts health ready y errores controlados,Prueba falta de Azure; despliegue pendiente
+RNF-04,Actualizacion oportuna,WebSocket y jobs de caducidad,Prueba estados; medicion 5s pendiente
+RNF-05,Rendimiento,Indices espaciales y solicitudes paralelas,DDL y paquete real; benchmark pendiente
+RNF-06,Usabilidad,Mapa principal acciones y estados,Bundle; aceptacion de usuario pendiente
+RNF-07,Compatibilidad movil,Expo Android/iOS y safe areas,Bundles Android/iOS; dispositivos pendientes
+RNF-08,Crecimiento,Modulos repositorios y configuracion,Revision de arquitectura
+RNF-09,Integridad,Propietario rol UUID y votos independientes,Pruebas API
+RNF-10,Explicar indice,Factores version fecha y datos insuficientes,Pruebas y pantalla de factores

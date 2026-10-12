@@ -1,0 +1,2 @@
+# Instalar solo al habilitar un modelo validado con datos representativos.
+scikit-learn>=1.6,<2

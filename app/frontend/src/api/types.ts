@@ -1,0 +1,17 @@
+import type { components } from './generated';
+export type Point = components['schemas']['Point'];
+export type Preferences = Required<components['schemas']['Preferences']>;
+export type User = Omit<components['schemas']['UserOutput'], 'preferences'> & { preferences: Preferences };
+export type Tokens = components['schemas']['Tokens'];
+export type Category = components['schemas']['CategoryOutput'];
+export type Incident = components['schemas']['IncidentOutput'];
+export type Factor = components['schemas']['Factor'];
+export type Evaluation = components['schemas']['RiskEvaluation'];
+export type Instruction = components['schemas']['Instruction'];
+export type Route = Omit<components['schemas']['RouteOutput'], 'geometry'> & { geometry: { type: 'LineString'; coordinates: number[][] } };
+export type RouteResults = Omit<components['schemas']['RouteResults'], 'routes'> & { routes: Route[] };
+export type ReportResult = components['schemas']['ReportOutput'];
+export type PendingReport = Point & { category_id: string; description: string; client_id: string; occurred_at: string; local_photo?: string; report_id?: string; error?: string };
+export type AppAlert = components['schemas']['AlertOutput'];
+export type History = { routes: Route[]; reports: ReportResult[] };
+export type OfflinePackage = { type: 'FeatureCollection'; features: unknown[]; metadata: { center: number[]; radius_m: number; created_at: string; attribution: string } };
