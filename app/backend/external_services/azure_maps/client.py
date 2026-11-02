@@ -1,4 +1,5 @@
 import httpx
+import logging
 from fastapi import HTTPException
 from backend.config import settings
 from backend.external_services.geolocation.service import within_city
@@ -13,6 +14,16 @@ def credentials():
     raise HTTPException(503, 'El servicio de mapas no está configurado. Inténtalo más tarde.')
 
 
+def upstream_error(status):
+    # Registrar únicamente el código, nunca encabezados, URLs ni la respuesta de Azure.
+    logging.getLogger('saferoute.azure').warning('Azure Maps HTTP %s', status)
+    if status in (401, 403):
+        return HTTPException(503, 'Azure Maps rechazó las credenciales o permisos del servidor. Revisa la configuración de Azure y reinicia el backend.')
+    if status == 429:
+        return HTTPException(503, 'Azure Maps alcanzó su límite de solicitudes. Espera un momento y vuelve a intentar.')
+    return HTTPException(502, 'Azure Maps no pudo completar la solicitud. Inténtalo nuevamente.')
+
+
 async def request(method, path, params=None, body=None):
     headers = {**credentials(), 'Accept-Language': 'es-MX'}
     if body:
@@ -24,14 +35,27 @@ async def request(method, path, params=None, body=None):
             return response.json()
     except httpx.TimeoutException:
         raise HTTPException(504, 'Azure Maps tardó demasiado. Inténtalo nuevamente.')
+    except httpx.HTTPStatusError as exc:
+        raise upstream_error(exc.response.status_code) from None
     except (httpx.HTTPError, ValueError):
         # No exponer respuestas ni URLs que puedan contener credenciales.
         raise HTTPException(502, 'Azure Maps no está disponible o rechazó la configuración.')
 
 
+def in_municipality(feature):
+    # El recuadro es rectangular y puede incluir otros municipios; Azure reporta el municipio en adminDistricts.
+    return any(d.get('shortName') == 'Salamanca' for d in feature.get('properties', {}).get('address', {}).get('adminDistricts', []))
+
+
 async def search(query):
     result = await request('GET', '/geocode', {'api-version': '2025-01-01', 'query': query + ', Salamanca, Guanajuato, México', 'top': 8, 'bbox': '-101.30,20.48,-101.08,20.68'})
-    return [{'label': x.get('properties', {}).get('address', {}).get('formattedAddress', query), 'longitude': x['geometry']['coordinates'][0], 'latitude': x['geometry']['coordinates'][1]} for x in result.get('features', []) if x.get('geometry', {}).get('type') == 'Point' and within_city(*x['geometry']['coordinates'][:2])]
+    return [{'label': x.get('properties', {}).get('address', {}).get('formattedAddress', query), 'longitude': x['geometry']['coordinates'][0], 'latitude': x['geometry']['coordinates'][1]} for x in result.get('features', []) if x.get('geometry', {}).get('type') == 'Point' and within_city(*x['geometry']['coordinates'][:2]) and in_municipality(x)]
+
+
+async def reverse(longitude, latitude):
+    result = await request('GET', '/reverseGeocode', {'api-version': '2025-01-01', 'coordinates': f'{longitude},{latitude}', 'resultTypes': 'Address'})
+    address = next(iter(result.get('features', [])), {}).get('properties', {}).get('address', {})
+    return {'label': address.get('addressLine') or address.get('formattedAddress') or 'Calle sin nombre', 'street': address.get('streetName'), 'neighborhood': address.get('neighborhood'), 'postal_code': address.get('postalCode')}
 
 
 def parse_routes(result):

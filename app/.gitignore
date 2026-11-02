@@ -12,3 +12,6 @@ ios/
 backend/data/osm/*.graphml
 backend/data/osm/cache/
 docs/rendered/
+frontend/audit-*.json
+
+passwords.txt

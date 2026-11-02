@@ -825,10 +825,6 @@ export interface components {
              * @default true
              */
             alerts: boolean;
-            /** Quiet Start */
-            quiet_start?: number | null;
-            /** Quiet End */
-            quiet_end?: number | null;
             /**
              * Theme
              * @default system

@@ -2,6 +2,10 @@ import os
 os.environ['JWT_SECRET'] = 'test-only-secret-at-least-thirty-two-characters'
 os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['ENABLE_JOBS'] = 'false'
+# Unit tests must never consume the developer's real Azure account from .env.
+os.environ['AZURE_MAPS_API_KEY'] = ''
+os.environ['AZURE_MAPS_SAS_TOKEN'] = ''
+os.environ['AZURE_MAPS_AUTH_MODE'] = 'key'
 
 import pytest
 from sqlalchemy import create_engine

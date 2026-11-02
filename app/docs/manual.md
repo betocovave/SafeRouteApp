@@ -73,7 +73,7 @@ Guarda el código privado que aparece una sola vez. La app no almacena ese códi
 Para recuperar acceso, introduce correo, código privado y nueva contraseña. El código se invalida,
 las sesiones anteriores se revocan y se emite otro código que también debes conservar.
 
-Perfil permite modificar nombre, transporte, tolerancia de riesgo, horario silencioso, alertas y tema.
+Perfil permite modificar nombre, transporte, tolerancia de riesgo, alertas y tema.
 Los cambios se guardan en el servidor. Para cerrar sesión, conecta la app y envía primero los reportes
 pendientes; así se revocan la sesión y el registro de notificaciones. La cuenta administradora se crea
 por consola mediante `python -m backend.cli create-admin`, sin credenciales predeterminadas.
@@ -200,9 +200,9 @@ generación offline, ausencia de datos y aplicación nocturna de iluminación. E
 reintentos de evidencia y progreso de navegación. También se ejecuta TypeScript y exportación Hermes
 para Android/iOS. Estas verificaciones no equivalen a una prueba en teléfonos reales.
 
-Pendientes de entorno: migraciones y consultas con PostGIS, operaciones con Azurite/Blob, Azure Maps
-con tu clave, push real y aceptación de interfaz/ubicación en Android e iOS. La prueba de integración
-requiere `TEST_DATABASE_URL` de una base aislada. La matriz anexa distingue código y aceptación.
+Pendientes de entorno: operaciones con Azurite/Blob, Azure Maps con tu clave, push real y aceptación
+de interfaz/ubicación en Android e iOS. Las migraciones y consultas PostGIS se prueban con
+`infrastructure/test-postgis.ps1` (requiere Docker). La matriz anexa distingue código y aceptación.
 
 Los objetivos de actualización en cinco segundos y rutas en cinco segundos requieren medición
 con servidor, red, datos y Azure configurados. No se afirma que ya hayan sido alcanzados. La

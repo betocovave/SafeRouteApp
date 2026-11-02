@@ -2066,32 +2066,6 @@
             "title": "Alerts",
             "default": true
           },
-          "quiet_start": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 23.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quiet Start"
-          },
-          "quiet_end": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 23.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quiet End"
-          },
           "theme": {
             "type": "string",
             "enum": [

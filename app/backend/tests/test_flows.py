@@ -53,13 +53,14 @@ def test_permissions_and_spatial_bounds(client, account):
     assert client.get('/api/v1/users/me').status_code == 401
     assert client.post('/api/v1/incidents', headers=headers, json=report_data(latitude=0)).status_code == 422
     assert client.get('/api/v1/maps/proxy?url=https://evil.test/map/tile', headers=headers).status_code == 422
+    for escape in ['/map/../search/fuzzy/json', '/map/%2e%2e/search/fuzzy/json']:
+        assert client.get('/api/v1/maps/proxy', params={'url': 'https://atlas.microsoft.com' + escape}, headers=headers).status_code == 422
 
 
 def test_nearby_independent_corroborations(client, account, db):
     _, original = account
     item = client.post('/api/v1/incidents', headers=original, json=report_data()).json()['incident']
     endpoint = '/api/v1/incidents/' + item['id'] + '/corroborations'
-    assert client.post(endpoint, headers=original, json={'version': 1, 'answer': 'present'}).status_code == 403
     for index in [1, 2]:
         tokens = client.post('/api/v1/auth/register', json={'name': 'Vecino', 'email': f'vecino{index}@example.com', 'password': 'securepassword12'}).json()
         headers = {'Authorization': 'Bearer ' + tokens['access_token']}
@@ -69,6 +70,21 @@ def test_nearby_independent_corroborations(client, account, db):
         assert response.status_code == 200, response.text
         assert response.json()['status'] == ('pending' if index == 1 else 'confirmed')
     assert db.get(Incident, item['id']).confidence == 1
+
+
+def test_author_follow_up_keeps_or_removes_report(client, account):
+    _, headers = account
+    item = client.post('/api/v1/incidents', headers=headers, json=report_data()).json()['incident']
+    endpoint = '/api/v1/incidents/' + item['id'] + '/corroborations'
+    nearby = '/api/v1/incidents?longitude=-101.195&latitude=20.57'
+    assert client.post(endpoint, headers=headers, json={'version': 1, 'answer': 'unknown'}).status_code == 422
+    kept = client.post(endpoint, headers=headers, json={'version': 1, 'answer': 'present'})
+    assert kept.status_code == 200, kept.text
+    assert kept.json()['status'] == 'pending' and kept.json()['expires_at'] > item['expires_at']
+    assert [i['id'] for i in client.get(nearby, headers=headers).json()] == [item['id']]
+    ended = client.post(endpoint, headers=headers, json={'version': 2, 'answer': 'ended'})
+    assert ended.json()['status'] == 'resolved'
+    assert client.get(nearby, headers=headers).json() == []
 
 
 def test_admin_audit_and_account_suspension(client, account, db):
@@ -85,3 +101,14 @@ def test_missing_azure_returns_actionable_error(client, account):
     response = client.get('/api/v1/search?q=Centro', headers=headers)
     assert response.status_code == 503
     assert 'mapas' in response.json()['detail']
+
+
+def test_repeated_location_pings_do_not_duplicate_alerts(client, account):
+    _, original = account
+    client.post('/api/v1/incidents', headers=original, json=report_data())
+    tokens = client.post('/api/v1/auth/register', json={'name': 'Vecino', 'email': 'vecino@example.com', 'password': 'securepassword12'}).json()
+    headers = {'Authorization': 'Bearer ' + tokens['access_token']}
+    ping = {'longitude': -101.195, 'latitude': 20.57, 'accuracy': 10}
+    for _ in range(3):
+        assert client.post('/api/v1/locations', headers=headers, json=ping).status_code == 200
+    assert len(client.get('/api/v1/alerts', headers=headers).json()) == 1

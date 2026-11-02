@@ -16,8 +16,10 @@ try {
     & (Join-Path $PSScriptRoot 'setup.ps1')
     & $dockerPath compose -f infrastructure/compose.yaml up -d --wait --wait-timeout 120
     if ($LASTEXITCODE -ne 0) { throw 'No se pudieron iniciar PostgreSQL/PostGIS y Azurite.' }
+    Write-Host 'Docker listo. Aplicando migraciones de PostgreSQL...'
     & $python -m alembic -c backend/alembic.ini upgrade head
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo preparar la base de datos.' }
+    Write-Host 'Preparando categorias...'
     & $python -m backend.cli seed
     if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las categorias.' }
     Write-Host 'Backend listo para iniciar. Deja esta terminal abierta y ejecuta npm.cmd start en frontend.'

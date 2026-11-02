@@ -1,0 +1,111 @@
+SAFEROUTEAI - COMANDOS
+======================
+Todas las rutas parten de C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app
+Usa PowerShell. Antes de empezar abre Docker Desktop y espera a que el motor este listo.
+
+
+1. ARRANCAR LA APP (para pruebas / capturas)
+--------------------------------------------
+
+TERMINAL 1 - Backend (dejala abierta hasta ver "Uvicorn running")
+    cd C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app
+    .\infrastructure\start-backend.ps1
+  Levanta PostgreSQL/PostGIS y Azurite en Docker, aplica migraciones, carga las
+  categorias y arranca la API en el puerto 8000.
+
+TERMINAL 2 - Expo, opcion A: telefono y PC en la MISMA red Wi-Fi
+    cd C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app\frontend
+    npm.cmd start
+  Inicia Metro en el puerto 8081. Escanea el QR con Expo Go.
+  Para recargar limpiando cache:   npm.cmd start -- --clear
+
+TERMINAL 2 - Expo, opcion B: por internet / datos moviles (sin tocar el firewall)
+    cd C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app
+    .\infrastructure\start-mobile.ps1
+  Verifica el backend, abre un tunel HTTPS de Cloudflare con Docker y lanza Expo
+  con --tunnel. Escanea el QR nuevo. Requiere el backend de la Terminal 1 encendido.
+
+
+2. FIREWALL (solo opcion A, Wi-Fi)
+----------------------------------
+PowerShell COMO ADMINISTRADOR, con el backend ya encendido:
+    cd C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app
+    .\infrastructure\allow-phone.ps1 -PhoneAddress <IP del telefono> -ComputerAddress <IP de la PC>
+  Ejemplo usado: -PhoneAddress 192.168.1.101 -ComputerAddress 192.168.1.107
+  Crea/actualiza la regla "SafeRouteAI-Phone-8000" para que el telefono llegue a la API.
+  Repetir cada vez que el router cambie la IP del telefono o de la PC.
+  Si la app dice "Sin conexion" o "No se puede conectar al backend", casi siempre es esto.
+
+Ver la IP de la PC:
+    (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Wi-Fi).IPAddress
+
+
+3. DIAGNOSTICO
+--------------
+Comprobar que backend (8000) y Metro (8081) estan escuchando:
+    Get-NetTCPConnection -State Listen -LocalPort 8000,8081 -ErrorAction SilentlyContinue
+
+Ver si el telefono esta conectado al backend y a Metro:
+    Get-NetTCPConnection -LocalPort 8000,8081 -State Established -ErrorAction SilentlyContinue
+
+Ver a que IPs apunta la regla de firewall:
+    Get-NetFirewallRule -Name SafeRouteAI-Phone-8000 | Get-NetFirewallAddressFilter
+
+Probar que la API y la base de datos responden:
+    Invoke-RestMethod http://127.0.0.1:8000/ready
+  Debe devolver: database = ready
+
+
+4. PRUEBAS Y VALIDACION
+-----------------------
+Desde app\frontend:
+    npm.cmd run typecheck     Revisa los tipos de TypeScript (tsc --noEmit)
+    npm.cmd test              Pruebas del frontend (17 tests)
+    npx.cmd expo install --check    Confirma que las dependencias coinciden con el SDK de Expo
+
+Desde app (pruebas del backend, requiere app\.venv):
+    .\.venv\Scripts\python.exe -m pytest backend\tests
+
+Pruebas de PostGIS:
+    .\infrastructure\test-postgis.ps1
+
+
+5. ACTUALIZAR EL SDK DE EXPO (ya hecho: ahora es SDK 58)
+--------------------------------------------------------
+Desde app\frontend:
+    npx expo install expo@^58.0.0    Sube el paquete expo a SDK 58
+    npx expo install --fix           Alinea React Native, WebView y modulos Expo
+    npm.cmd run typecheck
+    npm.cmd test
+  Motivo: Expo Go del iPhone solo soporta la ultima version del SDK.
+
+
+6. GENERAR EL DIAGRAMA DE ARQUITECTURA EN PNG
+---------------------------------------------
+Desde app\docs:
+    npx --yes @mermaid-js/mermaid-cli@11 -i SafeRouteAI-arquitectura.mermaid -o SafeRouteAI-arquitectura.png -w 3000 -s 3 -b white
+  Para SVG, cambia la extension de salida a .svg. Para PDF, a .pdf.
+
+
+7. APAGAR TODO
+--------------
+1) Terminal de Expo:      Ctrl+C
+2) Terminal del backend:  Ctrl+C
+3) Contenedores (conserva los datos):
+       cd C:\Users\Alberto\OneDrive\Documents\SafeRouteAI\app
+       docker compose -f infrastructure/compose.yaml stop
+   NO uses "docker compose down -v": borra la base de datos (cuentas e incidentes).
+4) Terminal de administrador (firewall): escribe  exit
+5) Docker Desktop (opcional): cerrar desde la bandeja del sistema.
+
+Comprobar que quedo apagado:
+    Get-NetTCPConnection -State Listen -LocalPort 8000,8081 -ErrorAction SilentlyContinue
+  Si no devuelve nada, ya no hay backend ni Metro.
+
+
+NOTAS PARA PROBAR DESDE QUERETARO
+---------------------------------
+- El backend solo cubre Salamanca (lat 20.48 a 20.68, lon -101.30 a -101.08). El GPS
+  real desde Queretaro queda fuera y las busquedas/reportes devuelven 422.
+- Para reportar: en Mapa toca DOS VECES un punto dentro de Salamanca y luego abre Reportar.
+- Registro: nombre de 2+ caracteres, correo valido y contrasena de 10+ caracteres.

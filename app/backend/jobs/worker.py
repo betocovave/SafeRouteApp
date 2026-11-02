@@ -13,7 +13,7 @@ log = logging.getLogger('saferoute.jobs')
 
 
 async def deliver(db):
-    pending = list(db.scalars(select(Delivery).where(Delivery.status == 'pending', Delivery.retry_at <= now()).limit(50)))
+    pending = list(db.scalars(select(Delivery).where(Delivery.status == 'pending', Delivery.retry_at <= now()).limit(50).with_for_update(skip_locked=True)))
     headers = {'Authorization': 'Bearer ' + settings().expo_access_token} if settings().expo_access_token else {}
     async with httpx.AsyncClient(timeout=5) as client:
         for task in pending:

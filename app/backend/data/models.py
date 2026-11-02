@@ -27,7 +27,7 @@ class User(Base):
     recovery_hash: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20), default='user')
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    preferences: Mapped[dict] = mapped_column(JSON, default=lambda: {'transport': 'driving', 'risk_tolerance': 'low', 'alerts': True, 'quiet_start': None, 'quiet_end': None, 'theme': 'system'})
+    preferences: Mapped[dict] = mapped_column(JSON, default=lambda: {'transport': 'driving', 'risk_tolerance': 'low', 'alerts': True, 'theme': 'system'})
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

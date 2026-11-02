@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, Platform, Pressable, Text, View, useColorScheme } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,10 +8,10 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import { api, API, ApiError, restoreSession, setExpiredHandler } from '../src/api/client';
+import { api, API, ApiError, checkBackend, restoreSession, setExpiredHandler } from '../src/api/client';
 import type { AppAlert, Category, Incident, OfflinePackage, Point, Route, User } from '../src/api/types';
 import { palettes } from '../src/theme/colors';
-import { loadPackage, read, saveActiveRoute, setStorageUser, syncReports, write } from '../src/storage/local';
+import { loadPackage, read, setStorageUser, syncReports, write } from '../src/storage/local';
 import { AuthScreen } from '../src/features/AuthScreen';
 import { MapScreen } from '../src/features/MapScreen';
 import { ReportScreen } from '../src/features/ReportScreen';
@@ -19,6 +19,7 @@ import { IncidentDetail } from '../src/features/IncidentDetail';
 import { ActivityScreen } from '../src/features/ActivityScreen';
 import { SettingsScreen } from '../src/features/SettingsScreen';
 import { AdminScreen } from '../src/features/AdminScreen';
+import { DEFAULT_ORIGIN, inCoverage } from '../src/geolocation/defaultOrigin';
 
 Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }) });
 type Tab = 'map' | 'report' | 'activity' | 'settings' | 'admin';
@@ -26,7 +27,10 @@ type Tab = 'map' | 'report' | 'activity' | 'settings' | 'admin';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [online, setOnline] = useState(true);
+  const [networkConnected, setNetworkConnected] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connectionCheck, setConnectionCheck] = useState(0);
+  const online = networkConnected && !connectionError;
   const [visible, setVisible] = useState(AppState.currentState === 'active');
   const [location, setLocation] = useState<Point | null>(null);
   const [reportPoint, setReportPoint] = useState<Point | null>(null);
@@ -37,6 +41,7 @@ export default function App() {
   const [activeRoute, setActiveRoute] = useState<Route | null>(null);
   const [viewedRoute, setViewedRoute] = useState<Route | null>(null);
   const [tab, setTab] = useState<Tab>('map');
+  const [ownDetail, setOwnDetail] = useState(false);
   const [status, setStatus] = useState('');
   const [changeVersion, setChangeVersion] = useState(0);
   const systemTheme = useColorScheme();
@@ -47,6 +52,7 @@ export default function App() {
   const state = useRef({ online, activeRoute, user, visible });
   state.current = { online, activeRoute, user, visible };
   const position = useRef<Point | null>(null);
+  const picked = useRef<Point | null>(null);
   const lastSent = useRef(0);
 
   const rememberUser = useCallback(async (value: User) => {
@@ -64,14 +70,14 @@ export default function App() {
     await rememberUser(value);
     setCategories(await read<Category[]>('categories', []));
     setIncidents(await read<Incident[]>('incidents', []));
-    const route = await read<Route | null>('activeRoute', null);
-    setActiveRoute(route);
+    // El recorrido vive solo en memoria; borra el que versiones anteriores dejaron guardado. El historial está en el servidor.
+    await write('activeRoute', null);
     setPack(loadPackage());
   }, [rememberUser]);
   useEffect(() => {
     setExpiredHandler(() => { setUser(null); tracking.current = false; watcher.current?.remove(); watcher.current = null; setStatus('Tu sesión expiró. Inicia sesión para continuar.'); });
     void restoreSession().then(exists => exists ? loadSession(true) : undefined).catch(e => setStatus(e.message)).finally(() => setLoading(false));
-    const net = NetInfo.addEventListener(value => setOnline(value.isConnected === true && value.isInternetReachable !== false));
+    const net = NetInfo.addEventListener(value => setNetworkConnected(value.isConnected === true && value.isInternetReachable !== false));
     const appState = AppState.addEventListener('change', value => {
       setVisible(value === 'active');
       if (value !== 'active') { watcher.current?.remove(); watcher.current = null; if (state.current.user && state.current.online) void api('/locations', 'DELETE').catch(() => undefined); }
@@ -79,10 +85,24 @@ export default function App() {
     return () => { net(); appState.remove(); watcher.current?.remove(); };
   }, [loadSession]);
 
+  useEffect(() => {
+    if (!visible || !networkConnected) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function check() {
+      const error = await checkBackend();
+      if (disposed) return;
+      setConnectionError(error);
+      timer = setTimeout(() => void check(), 60000);
+    }
+    void check();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [visible, networkConnected, connectionCheck]);
+
   const refreshIncidents = useCallback(async () => {
-    const p = position.current;
+    const p = position.current ?? picked.current ?? DEFAULT_ORIGIN;
     if (!p || !state.current.online || !state.current.user) return;
-    try { const items = await api<Incident[]>(`/incidents?longitude=${p.longitude}&latitude=${p.latitude}`); setIncidents(items); await write('incidents', items); }
+    try { const items = await api<Incident[]>(`/incidents?longitude=${p.longitude}&latitude=${p.latitude}&radius_m=5000`); setIncidents(items); await write('incidents', items); }
     catch (e) { setStatus((e as Error).message); }
   }, []);
 
@@ -103,6 +123,7 @@ export default function App() {
     if (!permission.granted) throw new Error('Ubicación denegada. Puedes seleccionar puntos en el mapa; la navegación necesita permiso de ubicación.');
     const value = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     const p = { longitude: value.coords.longitude, latitude: value.coords.latitude };
+    if (!inCoverage(p)) throw new Error('Tu ubicación está fuera de Salamanca, Guanajuato, la zona con cobertura. Toca dos veces un punto del mapa dentro de Salamanca para consultar rutas o reportar.');
     position.current = p; setLocation(p); setReportPoint(null); tracking.current = true;
     if (online) await api('/locations', 'POST', { ...p, accuracy: value.coords.accuracy ?? 10000, route_id: activeRoute?.id || null });
     await refreshIncidents(); await startWatcher(); setStatus('');
@@ -110,6 +131,10 @@ export default function App() {
   useEffect(() => {
     if (visible && user && tracking.current) void startWatcher().catch(e => setStatus(e.message));
   }, [visible, user?.id]);
+  // Sin punto el botón de enviar queda deshabilitado; el GPS solo se pedía al tocar "Centrar mi ubicación".
+  useEffect(() => {
+    if (tab === 'report' && user && !location && !reportPoint) void activateLocation().catch(e => setStatus(e.message));
+  }, [tab]);
   useEffect(() => {
     if (!user || !online || !visible) return;
     void api<Category[]>('/categories').then(async items => { setCategories(items); await write('categories', items); }).catch(e => setStatus(e.message));
@@ -145,7 +170,7 @@ export default function App() {
   }, [online, visible, user?.id, refreshIncidents]);
 
   async function openIncident(id: string) {
-    try { const value = online ? await api<Incident>('/incidents/'+id) : incidents.find(i => i.id === id); if (value) setDetail(value); else setStatus('El incidente no está disponible en la información guardada.'); }
+    try { const value = online ? await api<Incident>('/incidents/'+id) : incidents.find(i => i.id === id); if (value) { setDetail(value); setOwnDetail(false); } else setStatus('El incidente no está disponible en la información guardada.'); }
     catch (e) { setStatus((e as Error).message); }
   }
   useEffect(() => {
@@ -161,22 +186,25 @@ export default function App() {
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
     await api('/devices', 'POST', { token: token.data });
   }
-  function chooseActive(route: Route | null) { setActiveRoute(route); setViewedRoute(null); void saveActiveRoute(route); }
+  function chooseActive(route: Route | null) { setActiveRoute(route); setViewedRoute(null); }
   function logoutLocal() { setUser(null); setDetail(null); setActiveRoute(null); setViewedRoute(null); setReportPoint(null); setTab('map'); setIncidents([]); setCategories([]); setLocation(null); position.current = null; setStorageUser(''); tracking.current = false; watcher.current?.remove(); watcher.current = null; void SecureStore.deleteItemAsync('saferoute.profile'); }
   const tabs: { id: Tab; title: string; icon: keyof typeof Ionicons.glyphMap }[] = [{ id: 'map', title: 'Mapa', icon: 'map-outline' }, { id: 'report', title: 'Reportar', icon: 'add-circle-outline' }, { id: 'activity', title: 'Actividad', icon: 'notifications-outline' }, { id: 'settings', title: 'Perfil', icon: 'person-outline' }];
   return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}><StatusBar style={dark ? 'light' : 'dark'} />
+    {(!networkConnected || connectionError) && <Pressable accessibilityRole="button" accessibilityLabel="Reintentar conexión" onPress={() => setConnectionCheck(v => v+1)} style={{ padding: 12, backgroundColor: colors.pale }}><Text style={{ color: colors.text }}>{!networkConnected ? 'Sin conexión de red. Activa Wi-Fi o datos móviles.' : connectionError} · Toca para reintentar</Text></Pressable>}
     {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.blue} /></View> : !user ? <AuthScreen colors={colors} onSession={() => loadSession(false)} /> : <>
       {!!status && <Pressable accessibilityLabel="Cerrar aviso" onPress={() => setStatus('')} style={{ padding: 12, backgroundColor: colors.pale }}><Text style={{ color: colors.text, fontSize: 12 }}>{status} · Toca para cerrar</Text></Pressable>}
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1, display: tab === 'map' && !detail ? 'flex' : 'none' }}><MapScreen colors={colors} dark={dark} online={online} location={location} incidents={incidents} pack={pack} user={user} activeRoute={activeRoute} viewedRoute={viewedRoute} changeVersion={changeVersion} onLocation={activateLocation} onIncident={id => void openIncident(id)} onReport={() => setTab('report')} onPoint={setReportPoint} onActive={chooseActive} /></View>
-        {detail ? <IncidentDetail colors={colors} online={online} incident={detail} onBack={() => setDetail(null)} onUpdate={value => { setDetail(value); void refreshIncidents(); }} /> : <>
-          {tab === 'report' && <ReportScreen colors={colors} point={reportPoint || location} categories={categories} online={online} onDone={() => { setTab('map'); void refreshIncidents(); }} />}
-          {tab === 'activity' && <ActivityScreen colors={colors} online={online} changeVersion={changeVersion} onIncident={setDetail} onRoute={route => { setViewedRoute(route); setTab('map'); }} />}
-          {tab === 'settings' && <SettingsScreen colors={colors} user={user} online={online} point={location} pack={pack} onUser={value => void rememberUser(value)} onPack={setPack} onLogout={logoutLocal} onAdmin={() => setTab('admin')} onNotifications={notifications} />}
+        <View style={{ flex: 1 }}><MapScreen colors={colors} dark={dark} online={online} location={location} incidents={incidents} pack={pack} user={user} activeRoute={activeRoute} viewedRoute={viewedRoute} changeVersion={changeVersion} onLocation={activateLocation} onIncident={id => void openIncident(id)} onReport={() => { setDetail(null); setTab('report'); }} onPoint={p => { picked.current = p; setReportPoint(p); }} onActive={chooseActive} /></View>
+        <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background, display: detail || tab !== 'map' ? 'flex' : 'none' }}>
+        {detail ? <IncidentDetail colors={colors} online={online} own={ownDetail} incident={detail} onBack={() => setDetail(null)} onUpdate={value => { setDetail(value); void refreshIncidents(); }} /> : <>
+          {tab === 'report' && <ReportScreen colors={colors} point={reportPoint || location} categories={categories} online={online} onDone={() => { setTab('map'); void refreshIncidents(); }} onSent={() => void refreshIncidents()} />}
+          {tab === 'activity' && <ActivityScreen colors={colors} online={online} changeVersion={changeVersion} onIncident={(item, own) => { setDetail(item); setOwnDetail(own); }} onRoute={route => { setViewedRoute(route); setTab('map'); }} />}
+          {tab === 'settings' && <SettingsScreen colors={colors} user={user} online={online} pack={pack} onUser={value => void rememberUser(value)} onPack={setPack} onLogout={logoutLocal} onAdmin={() => setTab('admin')} onNotifications={notifications} />}
           {tab === 'admin' && <AdminScreen colors={colors} onBack={() => setTab('settings')} />}
         </>}
+        </View>
       </View>
-      <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, paddingTop: 9, paddingBottom: 7 }}>{tabs.map(t => <Pressable key={t.id} accessibilityRole="tab" accessibilityState={{ selected: tab === t.id }} accessibilityLabel={t.title} onPress={() => { setDetail(null); setTab(t.id); }} style={{ flex: 1, alignItems: 'center', gap: 4, padding: 5 }}><Ionicons name={t.icon} size={24} color={tab === t.id ? colors.blue : colors.muted} /><Text style={{ color: tab === t.id ? colors.blue : colors.muted, fontSize: 11, fontWeight: '600' }}>{t.title}</Text></Pressable>)}</View>
+      <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, paddingTop: 9, paddingBottom: 7 }}>{tabs.map(t => <Pressable key={t.id} accessibilityRole="tab" accessibilityState={{ selected: tab === t.id }} accessibilityLabel={t.title} onPress={() => { Keyboard.dismiss(); setDetail(null); setTab(t.id); }} style={{ flex: 1, alignItems: 'center', gap: 3, padding: 4 }}><View style={{ width: 58, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: tab === t.id ? colors.pale : 'transparent' }}><Ionicons name={(tab === t.id ? t.icon.replace('-outline', '') : t.icon) as keyof typeof Ionicons.glyphMap} size={24} color={tab === t.id ? colors.blue : colors.muted} /></View><Text style={{ color: tab === t.id ? colors.blue : colors.muted, fontSize: 11, fontWeight: tab === t.id ? '700' : '500' }}>{t.title}</Text></Pressable>)}</View>
     </>}
   </SafeAreaView></SafeAreaProvider>;
 }

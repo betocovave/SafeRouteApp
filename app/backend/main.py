@@ -23,7 +23,8 @@ async def lifespan(app):
             await job
 
 
-app = FastAPI(title='SafeRouteAI', version='1.0.0', lifespan=lifespan)
+docs = settings().environment != 'production'
+app = FastAPI(title='SafeRouteAI', version='1.0.0', lifespan=lifespan, docs_url='/docs' if docs else None, redoc_url='/redoc' if docs else None, openapi_url='/openapi.json' if docs else None)
 app.add_middleware(CORSMiddleware, allow_origins=settings().cors_origins.split(','), allow_credentials=False, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'], expose_headers=['X-Package-SHA256', 'X-Package-Bytes'])
 app.include_router(router)
 app.include_router(maps_router)

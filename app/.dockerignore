@@ -1,0 +1,13 @@
+**/.env
+**/__pycache__
+**/.pytest_cache
+.venv
+.git
+frontend
+docs
+backend/tests
+backend/diagnose.py
+backend/data/osm/cache
+**/.env.*
+**/*.db
+**/passwords.txt

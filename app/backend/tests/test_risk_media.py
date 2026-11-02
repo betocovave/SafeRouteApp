@@ -45,3 +45,21 @@ def test_reject_non_image():
     from fastapi import HTTPException
     with pytest.raises(HTTPException):
         sanitize(b'not-an-image')
+
+
+def test_unreachable_blob_storage_fails_fast(monkeypatch):
+    from time import monotonic
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from backend.media import photos
+    # Nada escucha en el puerto 9: sin limites, el SDK de Azure reintenta ~100 s.
+    dead = SimpleNamespace(azure_blob_connection_string='DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=a2V5;BlobEndpoint=http://127.0.0.1:9/devstoreaccount1;',
+                           azure_blob_container='incident-photos', request_timeout=4.0)
+    monkeypatch.setattr(photos, 'settings', lambda: dead)
+    start = monotonic()
+    try:
+        photos.upload(b'jpeg')
+        raise AssertionError('upload should fail')
+    except HTTPException as exc:
+        assert exc.status_code == 502
+    assert monotonic() - start < 15

@@ -4,6 +4,7 @@ import json
 import secrets
 from collections import defaultdict, deque
 from datetime import timedelta
+from math import cos, radians
 from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy import select, delete
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from geoalchemy2.elements import WKTElement
 from backend.api import schemas as S
 from backend.api.realtime import hub
-from backend.authentication.security import current_user, admin_user, authenticate, digest, hasher, issue, revoke_all, verify
+from backend.authentication.security import DUMMY_HASH, current_session, current_user, admin_user, digest, hasher, issue, revoke_all, verify
 from backend.business.administration.service import audit
 from backend.business.alerts.service import generate
 from backend.business.incidents.service import corroborate
@@ -22,7 +23,7 @@ from backend.business.users.service import profile
 from backend.config import settings
 from backend.data.database import get_db, SessionLocal
 from backend.data.models import Alert, Category, Device, Evaluation, Incident, Location, Photo, Report, RouteRecord, Session, User, now, utc
-from backend.external_services.azure_maps.client import search
+from backend.external_services.azure_maps.client import reverse, search
 from backend.external_services.geolocation.service import require_city, distance
 from backend.intelligence.processing.heatmap import heatmap
 from backend.intelligence.risk_algorithm.engine import evaluate
@@ -42,6 +43,9 @@ def limit(request, bucket, max_count=12):
     if len(queue) >= max_count:
         raise HTTPException(429, 'Demasiados intentos. Espera unos minutos.')
     queue.append(now())
+    if len(auth_attempts) > 10000:
+        for stale in [k for k, q in auth_attempts.items() if q[-1] < cutoff]:
+            del auth_attempts[stale]
 
 
 def incident_output(db, incident):
@@ -70,7 +74,8 @@ def register(data: S.Registration, request: Request, db=Depends(get_db)):
 def login(data: S.Login, request: Request, db=Depends(get_db)):
     limit(request, 'login')
     user = db.scalar(select(User).where(User.email == data.email))
-    if not user or not user.active or not verify(user.password_hash, data.password):
+    valid = verify(user.password_hash if user else DUMMY_HASH, data.password)
+    if not user or not user.active or not valid:
         raise HTTPException(401, 'Credenciales inválidas.')
     return issue(db, user)
 
@@ -102,8 +107,8 @@ def refresh(data: S.Refresh, request: Request, db=Depends(get_db)):
 
 
 @router.post('/auth/logout', status_code=204)
-def logout(request: Request, user=Depends(current_user), db=Depends(get_db)):
-    _, session = authenticate(db, request.headers['authorization'].split(' ', 1)[1])
+def logout(auth=Depends(current_session), db=Depends(get_db)):
+    user, session = auth
     session.revoked = True
     db.execute(delete(Device).where(Device.user_id == user.id))
     db.execute(delete(Location).where(Location.user_id == user.id))
@@ -132,7 +137,7 @@ async def location(data: S.LocationInput, user=Depends(current_user), db=Depends
     require_city(data.longitude, data.latitude)
     update_location(db, user, data)
     for incident in db.scalars(select(Incident).where(Incident.status.in_(['pending', 'confirmed']), Incident.expires_at > now())):
-        for user_id, alert_id in generate(db, incident):
+        for user_id, alert_id in generate(db, incident, user.id):
             await hub.send(user_id, {'type': 'alert', 'id': alert_id})
     return {'updated': True}
 
@@ -146,6 +151,12 @@ def clear_location(user=Depends(current_user), db=Depends(get_db)):
 @router.get('/search')
 async def destination_search(q: str = Query(min_length=2, max_length=160), user=Depends(current_user)):
     return await search(q)
+
+
+@router.get('/reverse')
+async def street_info(longitude: float = Query(ge=-180, le=180), latitude: float = Query(ge=-90, le=90), user=Depends(current_user)):
+    require_city(longitude, latitude)
+    return await reverse(longitude, latitude)
 
 
 @router.post('/routes', response_model=S.RouteResults)
@@ -181,7 +192,9 @@ def historical_heatmap(user=Depends(current_user), db=Depends(get_db)):
 def incidents(longitude: float = Query(ge=-180, le=180), latitude: float = Query(ge=-90, le=90), radius_m: int = Query(default=2000, ge=100, le=5000), offset: int = Query(default=0, ge=0), user=Depends(current_user), db=Depends(get_db)):
     require_city(longitude, latitude)
     point = [longitude, latitude]
-    candidates = db.scalars(select(Incident).where(Incident.status.in_(['pending', 'confirmed']), Incident.expires_at > now()).order_by(Incident.updated_at.desc()))
+    dlat = radius_m / 110540
+    dlon = radius_m / (111320 * cos(radians(latitude)))
+    candidates = db.scalars(select(Incident).where(Incident.status.in_(['pending', 'confirmed']), Incident.expires_at > now(), Incident.latitude.between(latitude-dlat, latitude+dlat), Incident.longitude.between(longitude-dlon, longitude+dlon)).order_by(Incident.updated_at.desc()))
     selected = [i for i in candidates if distance(point, [i.longitude, i.latitude]) <= radius_m]
     return [incident_output(db, i) for i in selected[offset:offset+100]]
 
@@ -204,6 +217,8 @@ async def report(data: S.IncidentInput, request: Request, user=Depends(current_u
             raise HTTPException(409, 'El identificador ya pertenece a otro reporte.')
         return {'report_id': existing.id, 'incident': incident_output(db, db.get(Incident, existing.incident_id))}
     limit(request, 'report', 20)
+    if len(db.scalars(select(Report.id).where(Report.user_id == user.id, Report.received_at >= now()-timedelta(hours=1)).limit(30)).all()) >= 30:
+        raise HTTPException(429, 'Demasiados reportes en la última hora.')
     if utc(data.occurred_at) > now()+timedelta(minutes=2) or utc(data.occurred_at) < now()-timedelta(days=30):
         raise HTTPException(422, 'La fecha del incidente está fuera del intervalo permitido.')
     category = db.get(Category, data.category_id)
@@ -301,9 +316,9 @@ def history(offset: int = Query(default=0, ge=0), user=Depends(current_user), db
 
 
 @router.post('/realtime/ticket')
-def ticket(request: Request, user=Depends(current_user), db=Depends(get_db)):
+def ticket(request: Request, auth=Depends(current_session)):
     limit(request, 'ticket', 100)
-    _, session = authenticate(db, request.headers['authorization'].split(' ', 1)[1])
+    user, session = auth
     token = secrets.token_urlsafe(32)
     for key in list(ws_tickets):
         if ws_tickets[key][1] < now():

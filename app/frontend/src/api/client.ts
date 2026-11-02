@@ -4,6 +4,18 @@ import type { Tokens } from './types';
 import { serverUrl } from './serverUrl';
 
 export const API = serverUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__, Constants.expoConfig?.hostUri);
+
+export async function checkBackend(): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(API+'/ready', { signal: controller.signal });
+    const body = await response.json();
+    return response.ok && body.database === 'ready' ? null : 'El servicio no está disponible por el momento. Inténtalo de nuevo en unos minutos.';
+  } catch {
+    return 'No pudimos conectar con SafeRouteAI. Revisa tu conexión a internet e inténtalo de nuevo.';
+  } finally { clearTimeout(timer); }
+}
 let tokens: Tokens | null = null;
 let expiresAt = 0;
 let refreshPromise: Promise<void> | null = null;
@@ -33,7 +45,12 @@ async function responseError(response: Response) {
 async function rotate() {
   if (!refreshPromise) refreshPromise = (async () => {
     if (!tokens) throw new ApiError(401, 'Inicia sesión.');
-    const response = await fetch(API+'/api/v1/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: tokens.refresh_token }) });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(API+'/api/v1/auth/refresh', { signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: tokens.refresh_token }) });
+    } finally { clearTimeout(timer); }
     if (!response.ok) {
       if (response.status === 401) { await saveTokens(null); onExpired?.(); }
       throw await responseError(response);
@@ -54,7 +71,7 @@ export async function raw(path: string, options: RequestInit = {}, retry = true)
     return response;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(0, 'Sin conexión con el servidor. Revisa tu red e inténtalo nuevamente.');
+    throw new ApiError(0, controller.signal.aborted ? 'El servidor tardó demasiado en responder. Inténtalo nuevamente.' : 'No pudimos conectar con SafeRouteAI. Revisa tu conexión a internet e inténtalo de nuevo.');
   } finally { clearTimeout(timer); }
 }
 export async function api<T>(path: string, method = 'GET', data?: unknown): Promise<T> {

@@ -1,5 +1,6 @@
+// onBlue: texto sobre fondos `blue`; en oscuro el azul es claro y el blanco no tendría contraste.
 export const palettes = {
-  light: { background: '#F8F5ED', surface: '#FFFFFF', text: '#12324D', muted: '#60788D', blue: '#176FE8', pale: '#E9F1FF', border: '#DBE4ED', danger: '#B83F50', green: '#187C72' },
-  dark: { background: '#091624', surface: '#12263A', text: '#E5EFFC', muted: '#9EB6CE', blue: '#70AAFF', pale: '#183A60', border: '#294257', danger: '#FF899A', green: '#6AD2C1' },
+  light: { background: '#F6F3EA', surface: '#FFFFFF', text: '#10304A', muted: '#53697D', blue: '#1262DC', onBlue: '#FFFFFF', pale: '#E6EFFD', border: '#D9E2EB', danger: '#B3303F', green: '#13705F' },
+  dark: { background: '#091624', surface: '#12263A', text: '#E8F1FD', muted: '#A3BAD1', blue: '#7DB2FF', onBlue: '#06213F', pale: '#1A3C62', border: '#2B455B', danger: '#FF8D9C', green: '#6AD2C1' },
 };
 export type Palette = typeof palettes.light;

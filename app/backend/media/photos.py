@@ -29,7 +29,9 @@ def sanitize(data):
 def container():
     if not settings().azure_blob_connection_string:
         raise HTTPException(503, 'El almacenamiento de fotografías no está disponible. Puedes continuar sin foto o reintentar después.')
-    return BlobServiceClient.from_connection_string(settings().azure_blob_connection_string).get_container_client(settings().azure_blob_container)
+    # Sin limites el SDK reintenta ~100 s con el almacenamiento caido, mas que el timeout de la app movil, que ya reintenta la foto pendiente.
+    service = BlobServiceClient.from_connection_string(settings().azure_blob_connection_string, connection_timeout=settings().request_timeout, retry_total=0)
+    return service.get_container_client(settings().azure_blob_container)
 
 
 def upload(data):

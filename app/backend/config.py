@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,7 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / '.env', extra='ignore')
     database_url: str = 'postgresql+psycopg://saferoute:saferoute@localhost:5432/saferoute'
     jwt_secret: str = Field(min_length=32)
-    environment: str = 'development'
+    environment: Literal['development', 'production'] = 'development'
     azure_maps_api_key: str = ''
     azure_maps_sas_token: str = ''
     azure_maps_auth_mode: str = 'key'
@@ -31,6 +32,8 @@ class Settings(BaseSettings):
             raise ValueError('Genera JWT_SECRET antes de iniciar el servidor.')
         if self.environment == 'production' and (not self.public_api_url.startswith('https://') or not self.database_url.startswith('postgresql')):
             raise ValueError('Producción requiere HTTPS y PostgreSQL/PostGIS.')
+        if self.environment == 'production' and ('saferoute:saferoute@' in self.database_url or 'localhost' in self.cors_origins):
+            raise ValueError('Producción requiere contraseña propia de base de datos y CORS sin localhost.')
         return self
 
 

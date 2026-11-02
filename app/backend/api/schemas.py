@@ -47,11 +47,11 @@ class Profile(Strict):
 
 
 class Preferences(Strict):
+    # Ignora claves retiradas (quiet_start/quiet_end) guardadas en perfiles anteriores.
+    model_config = ConfigDict(extra='ignore', str_strip_whitespace=True)
     transport: Literal['driving', 'walking'] = 'driving'
     risk_tolerance: Literal['low', 'medium', 'high'] = 'low'
     alerts: bool = True
-    quiet_start: int | None = Field(default=None, ge=0, le=23)
-    quiet_end: int | None = Field(default=None, ge=0, le=23)
     theme: Literal['system', 'light', 'dark'] = 'system'
 
 

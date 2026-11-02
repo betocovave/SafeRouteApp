@@ -1,0 +1,241 @@
+%% SafeRouteAI — arquitectura completa
+%% Iconografía Unicode: no requiere registrar paquetes de iconos.
+%% Línea discontinua: conexión opcional o evolución futura.
+%% Coordenadas: GeoJSON WGS84, longitud/latitud. Fechas: UTC.
+%%{init: {"theme":"base","flowchart":{"curve":"basis","nodeSpacing":25,"rankSpacing":55},"themeVariables":{"background":"#FFFDF5","primaryColor":"#E8F1FF","primaryTextColor":"#102A43","primaryBorderColor":"#3578C8","lineColor":"#527392","secondaryColor":"#F1F7FF","tertiaryColor":"#FFFDF5","fontFamily":"Arial, sans-serif"}}}%%
+flowchart LR
+
+  PERSON(["👤 Usuario<br/>Android / iOS"])
+
+  subgraph FRONT["📱 FRONTEND · React Native + Expo · TypeScript"]
+    direction TB
+    subgraph SCREENS["🖥️ Pantallas y navegación"]
+      AUTH_UI["🔐 Registro, acceso y recuperación<br/>Perfil y preferencias"]
+      MAP_UI["🗺️ Mapa y búsqueda<br/>Comparación de rutas y factores de seguridad"]
+      NAV_UI["🧭 Recorrido e instrucciones<br/>Progreso con GPS opcional"]
+      REPORT_UI["📣 Reportes y corroboraciones<br/>Fotografía opcional"]
+      ACTIVITY_UI["🔔 Alertas e historial"]
+      ADMIN_UI["🛡️ Administración<br/>Visible según permisos del servidor"]
+    end
+    UI_THEME["🎨 Interfaz responsive y áreas seguras<br/>Azules + marfil / modo oscuro"]
+    ONLINE_MAP["🌐 Azure Maps Web SDK<br/>WebView · recursos vía proxy del backend"]
+    OFFLINE_MAP["📍 Leaflet local en WebView<br/>Calles y nombres OSM · sin CDN"]
+    GPS["📡 Expo Location<br/>Solo con activación explícita y app visible"]
+    ORIGIN["📌 Origen predeterminado: Salamanca<br/>Punto de planificación, no presencia GPS"]
+    HTTP_CLIENT["🔌 Cliente HTTP JSON<br/>JWT · renovación · errores y reintentos"]
+    WS_CLIENT["⚡ Cliente WebSocket<br/>Ticket autenticado · reconexión"]
+    SECURE["🔑 Expo SecureStore<br/>Sesión y perfil local"]
+    LOCAL["💾 Almacenamiento móvil<br/>Mapa descargado · ruta e instrucciones<br/>Reportes pendientes y fotografías"]
+    SYNC["🔄 Sincronización al reconectar<br/>client_id · sin duplicar reportes"]
+  end
+
+  subgraph API["🔗 API / COMUNICACIÓN · app/backend/api"]
+    direction TB
+    REST["🚀 FastAPI · /api/v1<br/>Auth · perfil · preferencias · búsqueda · rutas<br/>Incidentes · fotos · alertas · historial · offline · admin"]
+    CONTRACT["📋 OpenAPI y contratos JSON<br/>Validación Pydantic · tipos TypeScript generados"]
+    ACCESS["🛂 Autorización<br/>Roles, propietario y límites de solicitudes"]
+    MAP_PROXY["🗺️ Proxy de recursos cartográficos<br/>Credenciales Azure solo en servidor"]
+    WS_SERVER["⚡ WebSocket autenticado<br/>Hub de conexiones en memoria"]
+  end
+
+  subgraph BACK["🐍 BACKEND PYTHON · Lógica de negocio"]
+    direction TB
+    USERS["👥 Gestión de usuarios<br/>Perfil, estado y sesiones"]
+    LOCATIONS["📍 Gestión de ubicaciones<br/>Cobertura Salamanca · posición reciente"]
+    ROUTES["🛣️ Gestión de rutas<br/>Auto / caminata · geometría e instrucciones"]
+    PREFS["⚙️ Gestión de preferencias<br/>Transporte · alertas · riesgo · tema"]
+    INCIDENTS["📣 Gestión de incidentes<br/>Reportes, estados y corroboraciones"]
+    SAFETY["🛡️ Evaluación de seguridad<br/>Exposición y factores explicables"]
+    RECOMMEND["✅ Recomendación de rutas<br/>Menor exposición entre alternativas disponibles"]
+    ALERTS["🔔 Gestión de alertas<br/>Riesgo crítico y actualizaciones"]
+    ADMIN["🧑‍💼 Administración<br/>Usuarios, categorías, reportes y contenido<br/>Auditoría de cambios"]
+  end
+
+  subgraph AUTH["🔐 AUTENTICACIÓN · app/backend/authentication"]
+    direction TB
+    JWT["🎟️ JWT de acceso y renovación<br/>Sesiones revocables · contraseñas con hash"]
+    RECOVERY["🗝️ Código privado de recuperación<br/>Mostrado una vez · hash almacenado<br/>Restablecimiento invalida sesiones y rota código"]
+  end
+
+  subgraph AI["🧠 INTELIGENCIA · app/backend/intelligence"]
+    direction TB
+    PROCESS["📊 Pandas / NumPy<br/>Procesamiento de datos"]
+    RISK["⚖️ Reglas de riesgo versionadas<br/>Severidad · distancia · antigüedad · confianza<br/>Iluminación nocturna · vialidad<br/>Índice 0–100 o información insuficiente"]
+    RULES["📝 Configuración única de reglas<br/>Pesos, umbrales, radios y vigencias"]
+    ML["🔬 Scikit-learn · evolución futura<br/>Contrato de modelo predictivo<br/>Sin modelo sintético activo"]
+  end
+
+  subgraph EXT["☁️ SERVICIOS EXTERNOS · app/backend/external_services"]
+    direction TB
+    AZURE_ADAPTER["🔌 Adaptador Azure Maps REST<br/>Búsqueda y rutas · API KEY o SAS<br/>Timeouts y errores controlados"]
+    AZURE["🌍 Azure Maps<br/>Cartografía online · geocodificación · rutas"]
+    CORRIDOR["🧩 Corredores candidatos<br/>Penalizar incidentes · excluir zonas críticas<br/>Puntos intermedios y geometría reevaluada"]
+    OSM["🌐 OpenStreetMap / OSMnx<br/>Preparación de redes de Salamanca"]
+    NETWORKS[("🕸️ Redes OSM locales<br/>GraphML: automóvil y caminata")]
+    PACKAGE["📦 Generador de paquete offline<br/>GeoJSON propio · radio ≤ 2 km · ≤ 50 MB"]
+  end
+
+  subgraph DATA["🗄️ DATA · app/backend/data"]
+    direction TB
+    ORM["🔧 SQLAlchemy + Alembic<br/>Persistencia y migraciones"]
+    PG[("🐘 PostgreSQL<br/>Usuarios · preferencias · sesiones<br/>Rutas · evaluaciones · incidentes · reportes<br/>Corroboraciones · fotos · alertas · auditoría")]
+    POSTGIS[("📐 PostGIS<br/>Geometrías de rutas<br/>Consultas e índices espaciales")]
+    HISTORY["🔥 Histórico de incidentes<br/>Mapa de calor · eventos vencidos"]
+  end
+
+  subgraph MEDIA["📷 MEDIA · app/backend/media"]
+    direction TB
+    PHOTO["🧼 Validación de imágenes<br/>Eliminación de metadatos GPS"]
+    BLOB_ADAPTER["🔌 Adaptador de almacenamiento Blob"]
+    BLOB[("☁️ Azure Blob Storage<br/>Configuración para servicio real")]
+    AZURITE[("🧪 Azurite<br/>Emulador local de fotografías")]
+  end
+
+  subgraph JOBS["⏱️ JOBS · app/backend/jobs"]
+    direction TB
+    WORKER["🔄 Trabajador de vencimiento y alertas<br/>Renovación por corroboración<br/>Vencidos permanecen en histórico"]
+    PUSH["📨 Expo Push Service → APNs / FCM<br/>Alertas determinadas por el backend<br/>Requiere build de desarrollo y credenciales"]
+  end
+
+  subgraph INFRA["🐳 INFRAESTRUCTURA Y ENTREGA"]
+    direction TB
+    COMPOSE["🐳 Docker Compose local<br/>PostgreSQL/PostGIS + Azurite"]
+    START["▶️ PowerShell / Bash de arranque y despliegue<br/>Contenedores · migraciones · categorías · Uvicorn"]
+    ENV["🔒 backend/.env<br/>AZURE_MAPS_API_KEY · JWT · DB · Blob<br/>Excluido del repositorio"]
+    CHECKS["🧪 Pruebas y validación<br/>Backend · frontend · espacial · dispositivos"]
+    DOCS["📚 Documentación<br/>Manual fuente y PDF · matriz RF/RNF"]
+  end
+
+  subgraph CLOUD["☁️ DESPLIEGUE EN PRODUCCIÓN · Azure · Bicep + Bash"]
+    direction TB
+    ACR["📦 Azure Container Registry<br/>Imágenes backend (Python 3.12) y proxy (nginx)"]
+    ACA["🚢 Azure Container Apps · ingress HTTPS externo<br/>1 réplica · init migrate → backend :8000 + sidecar nginx :8080<br/>Secretos: DB · JWT · Maps · Blob · Expo token"]
+    NGINX["🛡️ nginx sidecar<br/>TLS de Azure · IP real del cliente · HSTS · WebSocket upgrade"]
+    PG_CLOUD[("🐘 Azure Database for PostgreSQL Flexible Server<br/>+ PostGIS · subred privada con DNS privado")]
+    BLOB_CLOUD[("☁️ Azure Storage<br/>Contenedor incident-photos")]
+  end
+
+  PERSON --> SCREENS
+  UI_THEME --- SCREENS
+  HTTP_CLIENT -. "Producción: HTTPS" .-> NGINX
+  WS_CLIENT -. "Producción: WSS" .-> NGINX
+  NGINX --> ACA
+  ACA -->|"Ejecuta"| REST
+  START -. "deploy.sh · Docker build + push" .-> ACR
+  ACR --> ACA
+  ACA --> PG_CLOUD
+  ACA --> BLOB_CLOUD
+  ACA --> AZURE
+  AUTH_UI --> HTTP_CLIENT
+  MAP_UI --> HTTP_CLIENT
+  REPORT_UI --> HTTP_CLIENT
+  ACTIVITY_UI --> HTTP_CLIENT
+  ADMIN_UI --> HTTP_CLIENT
+  MAP_UI --> ONLINE_MAP
+  MAP_UI --> OFFLINE_MAP
+  ORIGIN --> MAP_UI
+  GPS -. "GPS solicitado por el usuario" .-> MAP_UI
+  GPS -. "Avance real en primer plano" .-> NAV_UI
+  MAP_UI --> NAV_UI
+  NAV_UI --> LOCAL
+  OFFLINE_MAP --> LOCAL
+  HTTP_CLIENT --> SECURE
+  REPORT_UI --> LOCAL
+  LOCAL --> SYNC
+  SYNC --> HTTP_CLIENT
+  HTTP_CLIENT -->|"HTTPS / HTTP local · JSON + JWT"| REST
+  WS_CLIENT <-->|"Eventos en primer plano"| WS_SERVER
+  WS_CLIENT --> ACTIVITY_UI
+  WS_CLIENT --> MAP_UI
+  REST --> CONTRACT
+  CONTRACT -. "Generación de tipos" .-> HTTP_CLIENT
+  REST --> ACCESS
+  ACCESS --> JWT
+  AUTH_UI --> SECURE
+  JWT --> USERS
+  RECOVERY --> USERS
+  REST --> USERS
+  REST --> LOCATIONS
+  REST --> ROUTES
+  REST --> PREFS
+  REST --> INCIDENTS
+  REST --> ALERTS
+  REST --> ADMIN
+  ONLINE_MAP -->|"Recursos del mapa"| MAP_PROXY
+  MAP_PROXY --> AZURE
+  GPS -. "Posición medida, nunca origen predeterminado" .-> LOCATIONS
+  ROUTES --> AZURE_ADAPTER
+  AZURE_ADAPTER --> AZURE
+  ROUTES --> CORRIDOR
+  CORRIDOR --> NETWORKS
+  INCIDENTS --> CORRIDOR
+  CORRIDOR -->|"Candidatos con puntos intermedios"| AZURE_ADAPTER
+  ROUTES -->|"Geometría real de cada alternativa"| SAFETY
+  INCIDENTS --> SAFETY
+  SAFETY --> RISK
+  PROCESS --> RISK
+  RULES --> RISK
+  PROCESS -.-> ML
+  ML -. "Sustitución futura tras validar datos" .-> RISK
+  SAFETY --> RECOMMEND
+  RECOMMEND --> ROUTES
+  SAFETY --> ALERTS
+  USERS --> ORM
+  LOCATIONS --> ORM
+  ROUTES --> ORM
+  PREFS --> ORM
+  INCIDENTS --> ORM
+  ALERTS --> ORM
+  ADMIN --> ORM
+  ORM --> PG
+  ORM --> POSTGIS
+  POSTGIS --> SAFETY
+  PG --> HISTORY
+  HISTORY --> REST
+  REPORT_UI -->|"Foto opcional vía REST"| PHOTO
+  PHOTO --> BLOB_ADAPTER
+  BLOB_ADAPTER -. "Servicio real configurable" .-> BLOB
+  BLOB_ADAPTER -->|"Desarrollo local"| AZURITE
+  PHOTO -->|"Referencia de fotografía"| ORM
+  OSM --> NETWORKS
+  NETWORKS --> PACKAGE
+  REST --> PACKAGE
+  PACKAGE -->|"Descarga autenticada"| LOCAL
+  INCIDENTS -->|"Cambios de estado"| WS_SERVER
+  ALERTS --> WS_SERVER
+  WORKER --> INCIDENTS
+  WORKER --> ALERTS
+  ALERTS --> PUSH
+  PUSH -. "Fuera de Expo Go" .-> PERSON
+  COMPOSE --> PG
+  COMPOSE --> POSTGIS
+  COMPOSE --> AZURITE
+  START --> COMPOSE
+  START --> ORM
+  START --> REST
+  ENV --> AZURE_ADAPTER
+  ENV --> JWT
+  ENV --> BLOB_ADAPTER
+  CHECKS --- REST
+  DOCS --- CONTRACT
+
+  classDef mobile fill:#E8F1FF,stroke:#3578C8,color:#102A43,stroke-width:1.5px;
+  classDef backend fill:#E4F5EF,stroke:#31856B,color:#143C30,stroke-width:1.5px;
+  classDef api fill:#EEE8FF,stroke:#8060B7,color:#36284F,stroke-width:1.5px;
+  classDef external fill:#DBEEFF,stroke:#3687B9,color:#123C55,stroke-width:1.5px;
+  classDef intelligence fill:#FFF3CC,stroke:#C39A25,color:#544211,stroke-width:1.5px;
+  classDef data fill:#FFE9E5,stroke:#CC7468,color:#592F29,stroke-width:1.5px;
+  classDef media fill:#FFE9F2,stroke:#CB6E98,color:#58273F,stroke-width:1.5px;
+  classDef infra fill:#F0F3F6,stroke:#72849A,color:#26364A;
+  classDef future fill:#FFFDF5,stroke:#C39A25,color:#685722,stroke-dasharray:5 5;
+  class PERSON,AUTH_UI,MAP_UI,NAV_UI,REPORT_UI,ACTIVITY_UI,ADMIN_UI,UI_THEME,ONLINE_MAP,OFFLINE_MAP,GPS,ORIGIN,HTTP_CLIENT,WS_CLIENT,SECURE,LOCAL,SYNC mobile;
+  class USERS,LOCATIONS,ROUTES,PREFS,INCIDENTS,SAFETY,RECOMMEND,ALERTS,ADMIN,JWT,RECOVERY,WORKER backend;
+  class REST,CONTRACT,ACCESS,MAP_PROXY,WS_SERVER api;
+  class AZURE_ADAPTER,AZURE,CORRIDOR,OSM,NETWORKS,PACKAGE,PUSH external;
+  class PROCESS,RISK,RULES intelligence;
+  class ML future;
+  class ORM,PG,POSTGIS,HISTORY data;
+  class PHOTO,BLOB_ADAPTER,BLOB,AZURITE media;
+  class COMPOSE,START,ENV,CHECKS,DOCS,ACR,ACA,NGINX infra;
+  class PG_CLOUD data;
+  class BLOB_CLOUD media;

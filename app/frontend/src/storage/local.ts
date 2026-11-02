@@ -65,8 +65,9 @@ export async function discardPending(clientId: string) {
     await write('queue', items.filter(i => i.client_id !== clientId));
   });
 }
-export async function downloadPackage(point: { longitude: number; latitude: number }) {
-  const response = await raw('/offline-packages', { method: 'POST', body: JSON.stringify({ ...point, radius_m: 2000 }) });
+// Toda la cobertura (recuadro de Salamanca): centro del recuadro y radio que alcanza sus esquinas.
+export async function downloadPackage() {
+  const response = await raw('/offline-packages', { method: 'POST', body: JSON.stringify({ longitude: -101.19, latitude: 20.58, radius_m: 16000 }) });
   const text = await response.text();
   if (new TextEncoder().encode(text).length > 50*1024*1024) throw new Error('El paquete supera 50 MB.');
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
@@ -81,5 +82,4 @@ export function loadPackage(): OfflinePackage | null {
   try { return file.exists ? JSON.parse(file.textSync()) as OfflinePackage : null; } catch { return null; }
 }
 export function deletePackage() { const file = new File(Paths.document, 'offline-map.geojson'); if (file.exists) file.delete(); }
-export const saveActiveRoute = (route: Route | null) => write('activeRoute', route);
 export const cacheIncidents = (items: Incident[]) => write('incidents', items);

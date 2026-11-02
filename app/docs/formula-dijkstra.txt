@@ -1,0 +1,42 @@
+=== FORMULA PARA POSTER (texto plano, Unicode) ===
+
+Costo de seguridad de cada calle e:
+
+  w(e) = ℓ(e) · [ 1 + λ · Σᵢ sᵢ · cᵢ · máx(0, 1 − dᵢ(e) / R) ]
+
+Ruta segura (Dijkstra sobre el grafo vial G = (V, E)):
+
+  P* = argmin_{P: origen → destino}  Σ_{e ∈ P} w(e)
+
+Restricción de incidentes críticos:
+
+  se elimina e de G  si  ∃ i crítico con dᵢ(e) ≤ 100 m
+
+
+=== DONDE ===
+
+  ℓ(e)   = longitud de la calle e (metros)
+  λ      = 15      factor de penalización del corredor
+  sᵢ     = severidad de la categoría del incidente i
+  cᵢ     = confianza del reporte i  (0.5 pendiente, 1.0 confirmado)
+  dᵢ(e)  = distancia (m) de la calle e al incidente i
+  R      = 300 m   radio de influencia del incidente
+  Σᵢ     = suma sobre los incidentes activos cercanos
+
+
+=== VERSION LaTeX (por si el poster usa LaTeX / PowerPoint con ecuaciones) ===
+
+w(e) = \ell(e)\left[\,1+\lambda\sum_{i}s_i\,c_i\,\max\!\left(0,\,1-\frac{d_i(e)}{R}\right)\right]
+
+P^{*}=\underset{P:\,o\to d}{\arg\min}\ \sum_{e\in P} w(e)
+
+
+=== PIE DE FIGURA SUGERIDO ===
+
+Cada calle se pondera por su longitud multiplicada por un factor de riesgo que
+crece con la severidad y la confianza de los incidentes cercanos y decae
+linealmente con la distancia hasta anularse a R = 300 m. El algoritmo de
+Dijkstra obtiene la ruta de menor costo acumulado; las calles a ≤ 100 m de un
+incidente crítico se excluyen del grafo.
+
+Implementación: backend/business/routes/corridors.py (NetworkX, nx.shortest_path).

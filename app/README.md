@@ -6,6 +6,8 @@ Azure Maps; Azure Blob Storage/Azurite; cartografía OSM local para uso offline.
 
 ## Inicio rápido
 
+Para probar con **datos móviles o redes diferentes**, sigue [Pruebas por internet](docs/pruebas-por-internet.md). Inicia el backend y después ejecuta `powershell -ExecutionPolicy Bypass -File .\infrastructure\start-mobile.ps1` desde `app`. Ese comando configura los dos túneles necesarios; `expo --tunnel` por sí solo no publica la API.
+
 Requisitos: Python 3.12+, Node 22+, PowerShell, Docker Desktop con contenedores Linux.
 Plataformas configuradas: Android 7.0+ (API 24) e iOS 16.4+; aceptación en dispositivos pendiente.
 Para ejecutar Android: Android Studio/SDK y un dispositivo o emulador.
@@ -73,6 +75,11 @@ Abre `http://localhost:8000/docs` para la API y `/ready` para comprobar la base 
 - Sector OSM descargable de 2 km y hasta 50 MB; continuidad de una ruta ya iniciada.
 - Cola local de reportes, sincronización idempotente y reintento independiente de fotografías.
 
+El origen predeterminado para consultar rutas es el centro de Salamanca. No se solicita GPS
+al calcular rutas o iniciar un recorrido: se activa explícitamente con el botón de ubicación.
+Sin GPS se muestran las instrucciones, sin avance automático. El punto predeterminado no se envía
+como ubicación medida al servidor y no habilita corroboraciones por cercanía. Para reportar sin
+GPS, selecciona la ubicación del incidente en el mapa.
 El GPS se utiliza solo con permiso y mientras la app está visible. Sin conexión no se reciben nuevas
 alertas ni se calculan nuevas rutas. Un índice es una estimación, nunca una garantía de seguridad.
 El proyecto no precarga incidentes ficticios y no utiliza los modelos sintéticos de los prototipos.
@@ -91,9 +98,8 @@ proyecto Expo y activa las notificaciones desde Perfil. Puedes seguir usando ale
 
 ```powershell
 .venv/Scripts/python.exe -m pytest backend/tests -q
-# Solo con una base PostGIS aislada de pruebas:
-$env:TEST_DATABASE_URL='postgresql+psycopg://usuario:clave@localhost:5432/saferoute_test'
-.venv/Scripts/python.exe -m pytest backend/tests/test_postgis_integration.py -q
+# Pruebas PostGIS (requieren Docker; sin él se omiten). Usan la base desechable saferoute_test:
+powershell -File infrastructure/test-postgis.ps1
 cd frontend
 npm run typecheck
 npm test

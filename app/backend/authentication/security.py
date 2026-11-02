@@ -13,6 +13,7 @@ from backend.data.models import Session, User, now, utc
 
 hasher = PasswordHasher()
 bearer = HTTPBearer(auto_error=False)
+DUMMY_HASH = hasher.hash('no-such-user')
 
 
 def digest(value):
@@ -50,10 +51,14 @@ def authenticate(db, token):
         raise HTTPException(401, 'Sesión expirada. Inicia sesión nuevamente.')
 
 
-def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db=Depends(get_db)):
+def current_session(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db=Depends(get_db)):
     if not credentials:
         raise HTTPException(401, 'Inicia sesión para continuar.')
-    return authenticate(db, credentials.credentials)[0]
+    return authenticate(db, credentials.credentials)
+
+
+def current_user(auth=Depends(current_session)):
+    return auth[0]
 
 
 def admin_user(user=Depends(current_user)):

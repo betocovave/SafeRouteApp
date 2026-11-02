@@ -25,9 +25,20 @@ def corroborate(db, user, incident_id, answer, version):
     if version != incident.version:
         raise HTTPException(409, 'El incidente cambió. Actualiza antes de corroborar.')
     original = db.scalar(select(Report).where(Report.incident_id == incident_id, Report.user_id == user.id))
-    if original:
-        raise HTTPException(403, 'No puedes corroborar tu propio reporte.')
     category = db.get(Category, incident.category_id)
+    if original:
+        # Seguimiento del autor: "continúa" renueva la vigencia; "terminó" lo retira del mapa. No cuenta como corroboración.
+        if answer == 'unknown':
+            raise HTTPException(422, 'Indica si el incidente continúa o ya terminó.')
+        if answer == 'present':
+            incident.expires_at = now() + timedelta(hours=category.ttl_hours)
+        else:
+            incident.status = 'resolved'
+        incident.updated_at = now()
+        incident.version += 1
+        db.add(Audit(actor_id=user.id, action='incident.followed_up', target=incident.id, details={'answer': answer}))
+        db.commit()
+        return incident
     if category.critical:
         raise HTTPException(403, 'No se solicita corroboración de incidentes críticos.')
     location = db.get(Location, user.id)

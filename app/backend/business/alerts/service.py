@@ -1,23 +1,20 @@
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from backend.data.models import Alert, Category, Delivery, Incident, Location, Report, RouteRecord, User, now, utc
 from backend.external_services.geolocation.service import distance
 from backend.intelligence.risk_algorithm.engine import RULES, line_distance_m
 
 
-def quiet(preferences):
-    start, end = preferences.get('quiet_start'), preferences.get('quiet_end')
-    hour = now().astimezone(ZoneInfo('America/Mexico_City')).hour
-    return start is not None and end is not None and (start <= hour < end if start < end else hour >= start or hour < end)
-
-
-def generate(db, incident):
+def generate(db, incident, user_id=None):
     category = db.get(Category, incident.category_id)
     if incident.status not in ('pending', 'confirmed') or utc(incident.expires_at) <= now():
         return []
     notifications = []
-    locations = db.scalars(select(Location).where(Location.updated_at >= now()-timedelta(seconds=RULES['location_max_age_s'])))
+    query = select(Location).where(Location.updated_at >= now()-timedelta(seconds=RULES['location_max_age_s']))
+    if user_id:
+        query = query.where(Location.user_id == user_id)
+    locations = list(db.scalars(query))
     for location in locations:
         user = db.get(User, location.user_id)
         if not user.active or not user.preferences.get('alerts', True) or location.accuracy > RULES['location_max_accuracy_m']:
@@ -38,8 +35,12 @@ def generate(db, incident):
         alert = Alert(user_id=user.id, incident_id=incident.id, version=incident.version, kind=kind, message=message, priority='critical' if category.critical else 'normal')
         db.add(alert)
         db.flush()
-        if not quiet(user.preferences) or category.critical:
-            db.add(Delivery(alert_id=alert.id))
+        db.add(Delivery(alert_id=alert.id))
         notifications.append((user.id, alert.id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Otra solicitud creó la misma alerta; no duplicar ni fallar.
+        db.rollback()
+        return []
     return notifications
