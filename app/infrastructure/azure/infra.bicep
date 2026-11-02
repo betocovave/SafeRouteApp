@@ -115,8 +115,7 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: '${prefix}-env'
   location: location
   properties: {
-    // Console logs remain available through az containerapp logs show.
-    appLogsConfiguration: { destination: 'none' }
+    // appLogsConfiguration is omitted on purpose: Azure rejects destination 'none'. Console logs remain available through az containerapp logs show.
     vnetConfiguration: { infrastructureSubnetId: '${network.id}/subnets/apps', internal: false }
     workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
   }
