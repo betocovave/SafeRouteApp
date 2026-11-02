@@ -59,10 +59,16 @@ done
 # Azure's synchronous command waits for the backup operation; any error aborts
 # before deploying the init container. No public PostgreSQL firewall is needed.
 backup="pre-${IMAGE_TAG:0:12}-$(date -u +%Y%m%d%H%M%S)"
-az postgres flexible-server backup create --resource-group "$AZURE_RESOURCE_GROUP" \
-  --server-name "$postgres" --name "$backup" --output none
-az postgres flexible-server backup show --resource-group "$AZURE_RESOURCE_GROUP" \
-  --server-name "$postgres" --name "$backup" --output table
+# Burstable servers reject on-demand backups; they keep the automatic 7-day backups from infra.bicep.
+tier="$(az postgres flexible-server show --resource-group "$AZURE_RESOURCE_GROUP" --name "$postgres" --query sku.tier -o tsv)"
+if [ "$tier" = Burstable ]; then
+  backup="omitido (tier Burstable: solo respaldos automáticos)"
+else
+  az postgres flexible-server backup create --resource-group "$AZURE_RESOURCE_GROUP" \
+    --server-name "$postgres" --name "$backup" --output none
+  az postgres flexible-server backup show --resource-group "$AZURE_RESOURCE_GROUP" \
+    --server-name "$postgres" --name "$backup" --output table
+fi
 az deployment group create --resource-group "$AZURE_RESOURCE_GROUP" --name saferoute-app \
   --parameters infrastructure/azure/app.bicepparam --output none
 api_url="$(az deployment group show -g "$AZURE_RESOURCE_GROUP" -n saferoute-app --query properties.outputs.apiUrl.value -o tsv)"
