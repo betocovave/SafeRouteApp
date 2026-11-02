@@ -29,7 +29,8 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existin
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: 'sr${suffix}' }
 var apiUrl = 'https://${prefix}-api.${environment.properties.defaultDomain}'
 var backendImage = '${registry.properties.loginServer}/saferoute-backend:${imageTag}'
-var backendEnv = [
+// The Expo token is optional (push works without it); Azure rejects an empty secret, so it is omitted when unset.
+var backendEnv = concat([
   { name: 'ENVIRONMENT', value: 'production' }
   { name: 'DATABASE_URL', secretRef: 'database-url' }
   { name: 'JWT_SECRET', secretRef: 'jwt-secret' }
@@ -37,12 +38,11 @@ var backendEnv = [
   { name: 'AZURE_MAPS_AUTH_MODE', value: 'key' }
   { name: 'AZURE_BLOB_CONNECTION_STRING', secretRef: 'blob-connection' }
   { name: 'AZURE_BLOB_CONTAINER', value: blobContainer }
-  { name: 'EXPO_ACCESS_TOKEN', secretRef: 'expo-token' }
   { name: 'PUBLIC_API_URL', value: apiUrl }
   { name: 'CORS_ORIGINS', value: corsOrigins }
   { name: 'FORWARDED_ALLOW_IPS', value: '127.0.0.1' }
   { name: 'ENABLE_JOBS', value: 'true' }
-]
+], empty(expoAccessToken) ? [] : [{ name: 'EXPO_ACCESS_TOKEN', secretRef: 'expo-token' }])
 
 resource app 'Microsoft.App/containerApps@2025-01-01' = {
   name: '${prefix}-api'
@@ -55,13 +55,12 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
       activeRevisionsMode: 'Single'
       ingress: { external: true, targetPort: 8080, transport: 'auto', allowInsecure: false }
       registries: [{ server: registry.properties.loginServer, identity: identity.id }]
-      secrets: [
+      secrets: concat([
         { name: 'database-url', value: 'postgresql+psycopg://saferouteadmin:${uriComponent(postgresPassword)}@${postgres.properties.fullyQualifiedDomainName}:5432/saferoute?sslmode=require' }
         { name: 'jwt-secret', value: jwtSecret }
         { name: 'maps-key', value: mapsApiKey }
-        { name: 'expo-token', value: expoAccessToken }
         { name: 'blob-connection', value: empty(blobConnectionString) ? 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}' : blobConnectionString }
-      ]
+      ], empty(expoAccessToken) ? [] : [{ name: 'expo-token', value: expoAccessToken }])
     }
     template: {
       // One worker and one replica: jobs, websocket hub and rate limits are in memory.
